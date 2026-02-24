@@ -1,8 +1,7 @@
-from __future__ import annotations
-
-import datetime as dt
 import streamlit as st
+import datetime as dt
 
+import kakeibo.db.repo as repo
 from kakeibo.db.repo import (
     init_db,
     insert_expense,
@@ -13,6 +12,8 @@ from kakeibo.db.repo import (
 )
 
 st.set_page_config(page_title="家計簿アプリ", layout="wide")
+init_db()
+st.write("DEBUG repo file:", repo.__file__)
 init_db()
 
 def ym_of(d: dt.date) -> str:
@@ -95,16 +96,19 @@ else:
     h6.markdown("**ID**")
     h7.markdown("**削除**")
 
-    for r in rows:
-        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.2, 1.2, 1.6, 2.6, 1.0, 0.8])
-        col1.write(r["日付"])
-        col2.write(f'{r["金額"]:,} JPY')
-        col3.write(r["カテゴリー"])
-        col4.write(r["品物"])
-        col5.write(r.get("メモ", ""))
-        col6.write(f'ID: {r["id"]}')
+    def pick(r, jp, en):
+        return r[jp] if jp in r else r[en]
 
-        if col7.button("🗑️", key=f"del_{r['id']}"):
+for r in rows:
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.2, 1.2, 1.6, 2.6, 1.0, 0.8])
+    col1.write(pick(r, "日付", "date"))
+    col2.write(f'{pick(r, "金額", "amount"):,} JPY')
+    col3.write(pick(r, "カテゴリー", "category"))
+    col4.write(pick(r, "品物", "item"))
+    col5.write(r.get("メモ", r.get("memo", "")))
+    col6.write(f'ID: {r["id"]}')
+
+    if col7.button("🗑️", key=f"del_{r['id']}"):
             delete_transaction(int(r["id"]))
             st.success(f"Deleted (ID={r['id']})")
             st.rerun()
