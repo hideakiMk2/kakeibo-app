@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date
 
-from kakeibo.db import repo
+from db import repo
 
 st.set_page_config(page_title="残高と収入", layout="wide")
 repo.init_db()
@@ -9,7 +9,7 @@ repo.init_db()
 st.title("残高と収入")
 
 # ---- 残高推定 ----
-st.subheader("現在推定残高")
+st.subheader("現在残高")
 bal = repo.estimate_current_balance()
 
 c1, c2, c3, c4 = st.columns(4)
@@ -18,12 +18,12 @@ c2.metric("基準残高", f"{bal['base_balance']:,} 円")
 c3.metric("基準日以降の収入", f"{bal['income_since_base']:,} 円")
 c4.metric("基準日以降の支出", f"{bal['expense_since_base']:,} 円")
 
-st.metric("推定残高", f"{bal['current_balance']:,} 円")
+st.metric("残高", f"{bal['current_balance']:,} 円")
 
 st.divider()
 
-# ---- 残高スナップショット追加 ----
-st.subheader("残高スナップショットを記録")
+# ---- 残高を管理 ----
+st.subheader("残高を記録")
 col1, col2, col3 = st.columns(3)
 with col1:
     d = st.date_input("記録日", value=date.today(), key="snap_date")
@@ -36,18 +36,18 @@ if st.button("残高を記録"):
     repo.add_balance_snapshot(date=d.isoformat(), balance=int(b), memo=memo)
     st.success("記録しました")
 
-st.subheader("残高スナップショット一覧")
+st.subheader("残高管理履歴")
 snap_rows = repo.list_balance_snapshots(limit=50)
 if snap_rows:
     st.dataframe([dict(r) for r in snap_rows], use_container_width=True)
 
-    del_sid = st.number_input("削除するスナップショットID", min_value=0, step=1, value=0, key="del_snap")
-    if st.button("スナップショット削除"):
+    del_sid = st.number_input("削除するID", min_value=0, step=1, value=0, key="del_snap")
+    if st.button("削除"):
         if del_sid > 0:
             repo.delete_balance_snapshot(int(del_sid))
             st.success("削除しました（再読み込みしてください）")
 else:
-    st.info("スナップショットがありません")
+    st.info("残高管理履歴がありません")
 
 st.divider()
 

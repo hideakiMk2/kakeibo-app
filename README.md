@@ -3,8 +3,22 @@ Streamlit と SQLite を用いた勉強目的のシンプルな家計簿アプ�
 日々の支出・収入を記録し、月次集計やカテゴリ別の可視化を行えます。
 ---
 # 起動方法
-以下のスクリプトを出力してください。
-uv run -- streamlit run app/main.py
+1) ビルドコマンド
+docker build -t kakeibo-app .
+2) コンテナを起動
+docker run --rm -p 8501:8501 \
+  -e PYTHONPATH=src \
+  -v "$(pwd)/src/data:/app/src/data" \
+  kakeibo-app
+3) コンテナに入る(シェル)
+docker run --rm -it \
+  -e PYTHONPATH=src \
+  -v "$(pwd):/app" \
+  kakeibo-app \
+  bash
+4) Streamlitを起動
+PYTHONPATH=src uv run -- streamlit run src/app/main.py
+
 ## 機能
 ### 基本
 - 日付ごとの支出・収入の記録

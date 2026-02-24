@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, Literal, Iterable
 from datetime import datetime
 
-from kakeibo.db.connection import get_connection
+from db.connection import get_connection
 
 
 TxType = Literal["expense", "income"]
