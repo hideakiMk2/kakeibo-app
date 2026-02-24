@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 # DBファイルの保存先（プロジェクト直下の data/kakeibo.db）
 DB_PATH = Path(__file__).resolve().parent / "data" / "kakeibo.db"
