@@ -48,7 +48,7 @@ with left:
 
     # 追加ボタン
         # 追加ボタン
-    if st.button("追加", type="primary", use_container_width=True):
+    if st.button("追加", type="primary", width='stretch'):
         item_clean = item_val.strip()
         memo_clean = memo.strip()
 
@@ -86,7 +86,7 @@ with right:
 
     st.write("カテゴリ別合計")
     if by_cat:
-        st.dataframe(by_cat, use_container_width=True, hide_index=True)
+        st.dataframe(by_cat, width='stretch', hide_index=True)
     else:
         st.info("この月のデータがまだありません。")
 

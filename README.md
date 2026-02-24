@@ -17,6 +17,6 @@ Streamlit と SQLite を用いた勉強目的のシンプルな家計簿アプ�
 - カレンダー風表示
 ---
 ## 技術構成
-- Python 3.13
+- Python 3.13.11
 - Streamlit
 - SQLite
