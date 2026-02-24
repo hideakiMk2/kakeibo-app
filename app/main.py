@@ -1,123 +1,64 @@
-from __future__ import annotations
-
-import datetime as dt
 import streamlit as st
+from datetime import date
 
-from kakeibo.db.repo import (
-    init_db,
-    insert_expense,
-    fetch_month,
-    sum_month,
-    sum_by_category,
-    delete_transaction,
-)
+from kakeibo.db import repo
 
 st.set_page_config(page_title="家計簿", layout="wide")
-init_db()
+repo.init_db()
 
+st.title("家計簿（支出）")
 
-def ym_of(d: dt.date) -> str:
-    return f"{d.year:04d}-{d.month:02d}"
+# ---- 入力（支出） ----
+st.subheader("支出入力")
+col1, col2, col3 = st.columns(3)
 
+with col1:
+    d = st.date_input("日付", value=date.today())
+with col2:
+    amount = st.number_input("金額", min_value=0, step=100, value=0)
+with col3:
+    category = st.text_input("カテゴリ", value="")
 
-st.title("家計簿")
+item = st.text_input("品目", value="")
+memo = st.text_input("メモ", value="")
 
-with st.sidebar:
-    st.header("表示")
-    base = dt.date.today()
-    selected = st.date_input("対象月", value=base)
-    year_month = ym_of(selected)
-    st.caption(f"対象: {year_month}")
-
-# ----------------------
-# 入力
-# ----------------------
-st.subheader("支出を入力")
-
-c1, c2, c3, c4, c5 = st.columns([1.2, 1.0, 1.3, 1.6, 1.6])
-with c1:
-    date_val = st.date_input("日付", value=dt.date.today())
-with c2:
-    amount_val = st.number_input("金額 (円)", min_value=0, step=100, value=0)
-with c3:
-    category_val = st.selectbox(
-        "カテゴリー",
-        options=["食費", "日用品", "交通", "娯楽", "家賃", "光熱費", "通信", "医療", "その他"],
-        index=0,
-    )
-with c4:
-    item_val = st.text_input("品目", value="")
-with c5:
-    memo_val = st.text_input("メモ", value="")
-
-# use_container_width 廃止対応：buttonは width="stretch" を使用
-if st.button("追加", type="primary", width="stretch"):
-    item_clean = item_val.strip()
-    if item_clean == "":
-        st.error("品目が空です。")
-    else:
-        insert_expense(
-            date=date_val.isoformat(),
-            amount=int(amount_val),
-            category=category_val,
-            item=item_clean,
-            memo=memo_val.strip(),
-        )
-        st.success("追加しました。")
-        st.rerun()
+if st.button("支出を追加"):
+    repo.add_expense(date=d.isoformat(), amount=int(amount), category=category, item=item, memo=memo)
+    st.success("追加しました")
 
 st.divider()
 
-# ----------------------
-# 集計
-# ----------------------
-st.subheader(f"集計（{year_month}）")
+# ---- 集計 / 一覧（月選択） ----
+st.subheader("月別（支出・収入・差分）")
 
-total = sum_month(year_month)
-by_cat = sum_by_category(year_month)
+colA, colB = st.columns(2)
+with colA:
+    y = st.number_input("年", min_value=2000, max_value=2100, value=date.today().year, step=1)
+with colB:
+    m = st.number_input("月", min_value=1, max_value=12, value=date.today().month, step=1)
 
-m1, m2 = st.columns(2)
-m1.metric("合計 (円)", f"{total:,}")
-m2.metric("カテゴリー数", f"{len(by_cat)}")
+summary = repo.monthly_summary(int(y), int(m))
+c1, c2, c3 = st.columns(3)
+c1.metric("収入合計", f"{summary['income']:,} 円")
+c2.metric("支出合計", f"{summary['expense']:,} 円")
+c3.metric("差分", f"{summary['net']:,} 円")
 
-if by_cat:
-    # 表示だけ日本語列名に変換
-    by_cat_jp = [{"カテゴリー": r["category"], "合計": r["total"]} for r in by_cat]
-    st.dataframe(by_cat_jp, width="stretch", hide_index=True)
+st.subheader("カテゴリ別（支出）")
+cat_rows = repo.category_summary_for_expenses(int(y), int(m))
+if cat_rows:
+    st.dataframe([dict(r) for r in cat_rows], use_container_width=True)
 else:
-    st.info("今月のデータはありません。")
+    st.info("データがありません")
 
-st.divider()
+st.subheader("月別一覧（支出）")
+rows = repo.list_transactions_by_month(int(y), int(m), tx_type="expense")
+if rows:
+    st.dataframe([dict(r) for r in rows], use_container_width=True)
 
-# ----------------------
-# 一覧 + 削除
-# ----------------------
-st.subheader("一覧")
-
-rows = fetch_month(year_month)
-
-if not rows:
-    st.info("今月のデータはありません。")
+    del_id = st.number_input("削除する支出ID", min_value=0, step=1, value=0)
+    if st.button("支出を削除"):
+        if del_id > 0:
+            repo.delete_transaction(int(del_id))
+            st.success("削除しました（再読み込みしてください）")
 else:
-    h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 1.2, 1.2, 1.6, 2.6, 1.0, 0.8])
-    h1.markdown("**日付**")
-    h2.markdown("**金額**")
-    h3.markdown("**カテゴリー**")
-    h4.markdown("**品目**")
-    h5.markdown("**メモ**")
-    h6.markdown("**ID**")
-    h7.markdown("**削除**")
-
-    for r in rows:
-        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.2, 1.2, 1.6, 2.6, 1.0, 0.8])
-        col1.write(r["date"])
-        col2.write(f'{r["amount"]:,} 円')
-        col3.write(r["category"])
-        col4.write(r["item"])
-        col5.write(r.get("memo", ""))
-        col6.write(f'ID: {r["id"]}')
-
-        if col7.button("🗑️", key=f"del_{r['id']}"):
-            delete_transaction(int(r["id"]))
-            st.success(f"削除しました (ID={r['id']})")
-            st.rerun()
+    st.info("データがありません")

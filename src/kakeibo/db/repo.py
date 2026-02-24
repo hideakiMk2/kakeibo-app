@@ -1,156 +1,229 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Optional, Literal, Iterable
+from datetime import datetime
 
-# repo.py: .../src/kakeibo/db/repo.py
-# project root: .../kakeibo-app
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DB_PATH = PROJECT_ROOT / "data" / "kakeibo.sqlite3"
+from kakeibo.db.connection import get_connection
 
 
-def _ensure_data_dir() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+TxType = Literal["expense", "income"]
 
 
-def get_conn() -> sqlite3.Connection:
-    _ensure_data_dir()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _read_schema() -> str:
+    schema_path = Path(__file__).with_name("schema.sql")
+    return schema_path.read_text(encoding="utf-8")
 
 
 def init_db() -> None:
-    """
-    Create table if missing.
-    Keep backward-compatibility: if existing DB lacks 'memo', add it.
-    """
-    create_sql = """
-    CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,                -- YYYY-MM-DD
-        amount INTEGER NOT NULL CHECK(amount >= 0),
-        category TEXT NOT NULL,
-        item TEXT NOT NULL,
-        memo TEXT NOT NULL DEFAULT ''
-    );
-    """
-    with get_conn() as conn:
-        conn.execute(create_sql)
-
-        # Backward-compatible migration: add memo if missing
-        cols = conn.execute("PRAGMA table_info(transactions);").fetchall()
-        col_names = {c[1] for c in cols}  # c[1] = column name
-        if "memo" not in col_names:
-            conn.execute("ALTER TABLE transactions ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
-
-        conn.commit()
+    """Create tables if not exist."""
+    with get_connection() as con:
+        con.executescript(_read_schema())
+        con.commit()
 
 
-def insert_expense(date: str, amount: int, category: str, item: str, memo: str = "") -> None:
-    if not date or not isinstance(date, str):
-        raise ValueError("date must be 'YYYY-MM-DD'")
-    if not isinstance(amount, int) or amount < 0:
-        raise ValueError("amount must be a non-negative int")
-    if not category.strip():
-        raise ValueError("category must be non-empty")
-    if not item.strip():
-        raise ValueError("item must be non-empty")
+# ---------- Transactions (expense/income) ----------
 
-    sql = """
-    INSERT INTO transactions (date, amount, category, item, memo)
-    VALUES (?, ?, ?, ?, ?)
-    """
-    with get_conn() as conn:
-        conn.execute(
-            sql,
-            (
-                date.strip(),
-                amount,
-                category.strip(),
-                item.strip(),
-                (memo or "").strip(),
-            ),
+def add_transaction(
+    date: str,
+    tx_type: TxType,
+    amount: int,
+    category: str = "",
+    item: str = "",
+    memo: str = "",
+) -> None:
+    init_db()
+    with get_connection() as con:
+        con.execute(
+            """
+            INSERT INTO transactions(date, type, amount, category, item, memo)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (date, tx_type, amount, category, item, memo),
         )
-        conn.commit()
+        con.commit()
 
 
-def _month_range(year_month: str) -> Tuple[str, str]:
-    """
-    'YYYY-MM' -> [start, end)
-    """
-    if len(year_month) != 7 or year_month[4] != "-":
-        raise ValueError("year_month must be 'YYYY-MM'")
-    y = int(year_month[:4])
-    m = int(year_month[5:7])
-    if not (1 <= m <= 12):
-        raise ValueError("month must be 01..12")
-
-    start = f"{y:04d}-{m:02d}-01"
-    end = f"{y + 1:04d}-01-01" if m == 12 else f"{y:04d}-{m + 1:02d}-01"
-    return start, end
+def add_expense(date: str, amount: int, category: str, item: str, memo: str = "") -> None:
+    add_transaction(date=date, tx_type="expense", amount=amount, category=category, item=item, memo=memo)
 
 
-def fetch_month(year_month: str) -> List[Dict[str, Any]]:
-    start, end = _month_range(year_month)
-    sql = """
-    SELECT id, date, amount, category, item, memo
-    FROM transactions
-    WHERE date >= ? AND date < ?
-    ORDER BY date DESC, id DESC
-    """
-    with get_conn() as conn:
-        rows = conn.execute(sql, (start, end)).fetchall()
-
-    # Return EN keys (stable)
-    out: List[Dict[str, Any]] = []
-    for r in rows:
-        out.append(
-            {
-                "id": int(r["id"]),
-                "date": r["date"],
-                "amount": int(r["amount"]),
-                "category": r["category"],
-                "item": r["item"],
-                "memo": r["memo"],
-            }
-        )
-    return out
-
-
-def sum_month(year_month: str) -> int:
-    start, end = _month_range(year_month)
-    sql = """
-    SELECT COALESCE(SUM(amount), 0) AS total
-    FROM transactions
-    WHERE date >= ? AND date < ?
-    """
-    with get_conn() as conn:
-        row = conn.execute(sql, (start, end)).fetchone()
-    return int(row["total"]) if row is not None else 0
-
-
-def sum_by_category(year_month: str) -> List[Dict[str, Any]]:
-    start, end = _month_range(year_month)
-    sql = """
-    SELECT category, SUM(amount) AS total
-    FROM transactions
-    WHERE date >= ? AND date < ?
-    GROUP BY category
-    ORDER BY total DESC, category ASC
-    """
-    with get_conn() as conn:
-        rows = conn.execute(sql, (start, end)).fetchall()
-
-    # Return EN keys (stable)
-    return [{"category": r["category"], "total": int(r["total"])} for r in rows]
+def add_income(date: str, amount: int, category: str, item: str, memo: str = "") -> None:
+    # category/itemは「収入区分（給料/副業/返金）」等に使える
+    add_transaction(date=date, tx_type="income", amount=amount, category=category, item=item, memo=memo)
 
 
 def delete_transaction(tx_id: int) -> None:
-    if not isinstance(tx_id, int) or tx_id <= 0:
-        raise ValueError("tx_id must be a positive int")
-    sql = "DELETE FROM transactions WHERE id = ?"
-    with get_conn() as conn:
-        conn.execute(sql, (tx_id,))
-        conn.commit()
+    init_db()
+    with get_connection() as con:
+        con.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+        con.commit()
+
+
+def list_transactions_by_month(year: int, month: int, tx_type: Optional[TxType] = None) -> list[sqlite3.Row]:
+    init_db()
+    start = f"{year:04d}-{month:02d}-01"
+    # 翌月1日
+    if month == 12:
+        end = f"{year+1:04d}-01-01"
+    else:
+        end = f"{year:04d}-{month+1:02d}-01"
+
+    q = """
+        SELECT id, date, type, amount, category, item, memo
+        FROM transactions
+        WHERE date >= ? AND date < ?
+    """
+    params: list[object] = [start, end]
+    if tx_type:
+        q += " AND type = ?"
+        params.append(tx_type)
+
+    q += " ORDER BY date DESC, id DESC"
+
+    with get_connection() as con:
+        cur = con.execute(q, params)
+        return cur.fetchall()
+
+
+def monthly_summary(year: int, month: int) -> dict[str, int]:
+    init_db()
+    start = f"{year:04d}-{month:02d}-01"
+    if month == 12:
+        end = f"{year+1:04d}-01-01"
+    else:
+        end = f"{year:04d}-{month+1:02d}-01"
+
+    with get_connection() as con:
+        exp = con.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS s
+            FROM transactions
+            WHERE date >= ? AND date < ? AND type = 'expense'
+            """,
+            (start, end),
+        ).fetchone()["s"]
+        inc = con.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS s
+            FROM transactions
+            WHERE date >= ? AND date < ? AND type = 'income'
+            """,
+            (start, end),
+        ).fetchone()["s"]
+
+    net = int(inc) - int(exp)
+    return {"income": int(inc), "expense": int(exp), "net": net}
+
+
+def category_summary_for_expenses(year: int, month: int) -> list[sqlite3.Row]:
+    """既存のカテゴリ別集計（支出用）。必要ならincomeも同様に作れる。"""
+    init_db()
+    start = f"{year:04d}-{month:02d}-01"
+    if month == 12:
+        end = f"{year+1:04d}-01-01"
+    else:
+        end = f"{year:04d}-{month+1:02d}-01"
+
+    with get_connection() as con:
+        cur = con.execute(
+            """
+            SELECT category, COALESCE(SUM(amount),0) AS total
+            FROM transactions
+            WHERE date >= ? AND date < ? AND type = 'expense'
+            GROUP BY category
+            ORDER BY total DESC
+            """,
+            (start, end),
+        )
+        return cur.fetchall()
+
+
+# ---------- Balance snapshots ----------
+
+def add_balance_snapshot(date: str, balance: int, memo: str = "") -> None:
+    init_db()
+    with get_connection() as con:
+        con.execute(
+            """
+            INSERT INTO balance_snapshots(date, balance, memo)
+            VALUES (?, ?, ?)
+            """,
+            (date, balance, memo),
+        )
+        con.commit()
+
+
+def list_balance_snapshots(limit: int = 50) -> list[sqlite3.Row]:
+    init_db()
+    with get_connection() as con:
+        cur = con.execute(
+            """
+            SELECT id, date, balance, memo
+            FROM balance_snapshots
+            ORDER BY date DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return cur.fetchall()
+
+
+def delete_balance_snapshot(snapshot_id: int) -> None:
+    init_db()
+    with get_connection() as con:
+        con.execute("DELETE FROM balance_snapshots WHERE id = ?", (snapshot_id,))
+        con.commit()
+
+
+def estimate_current_balance() -> dict[str, int | str]:
+    """
+    最新スナップショット以降の取引を反映した推定残高を返す。
+    snapshotが無い場合は base=0 とする。
+    """
+    init_db()
+    with get_connection() as con:
+        snap = con.execute(
+            """
+            SELECT date, balance
+            FROM balance_snapshots
+            ORDER BY date DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+        if snap:
+            base_date = snap["date"]
+            base_balance = int(snap["balance"])
+        else:
+            base_date = "0000-01-01"
+            base_balance = 0
+
+        inc = con.execute(
+            """
+            SELECT COALESCE(SUM(amount),0) AS s
+            FROM transactions
+            WHERE date > ? AND type='income'
+            """,
+            (base_date,),
+        ).fetchone()["s"]
+
+        exp = con.execute(
+            """
+            SELECT COALESCE(SUM(amount),0) AS s
+            FROM transactions
+            WHERE date > ? AND type='expense'
+            """,
+            (base_date,),
+        ).fetchone()["s"]
+
+    current = base_balance + int(inc) - int(exp)
+    return {
+        "base_date": base_date,
+        "base_balance": base_balance,
+        "income_since_base": int(inc),
+        "expense_since_base": int(exp),
+        "current_balance": int(current),
+    }
