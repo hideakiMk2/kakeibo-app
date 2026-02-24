@@ -4,6 +4,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+# repo.py: .../src/kakeibo/db/repo.py
+# project root: .../kakeibo-app
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DB_PATH = PROJECT_ROOT / "data" / "kakeibo.sqlite3"
 
@@ -20,10 +22,14 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    sql = """
+    """
+    Create table if missing.
+    Keep backward-compatibility: if existing DB lacks 'memo', add it.
+    """
+    create_sql = """
     CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,
+        date TEXT NOT NULL,                -- YYYY-MM-DD
         amount INTEGER NOT NULL CHECK(amount >= 0),
         category TEXT NOT NULL,
         item TEXT NOT NULL,
@@ -31,7 +37,14 @@ def init_db() -> None:
     );
     """
     with get_conn() as conn:
-        conn.execute(sql)
+        conn.execute(create_sql)
+
+        # Backward-compatible migration: add memo if missing
+        cols = conn.execute("PRAGMA table_info(transactions);").fetchall()
+        col_names = {c[1] for c in cols}  # c[1] = column name
+        if "memo" not in col_names:
+            conn.execute("ALTER TABLE transactions ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
+
         conn.commit()
 
 
@@ -45,18 +58,28 @@ def insert_expense(date: str, amount: int, category: str, item: str, memo: str =
     if not item.strip():
         raise ValueError("item must be non-empty")
 
-    memo = (memo or "").strip()
-
     sql = """
     INSERT INTO transactions (date, amount, category, item, memo)
     VALUES (?, ?, ?, ?, ?)
     """
     with get_conn() as conn:
-        conn.execute(sql, (date, amount, category.strip(), item.strip(), memo))
+        conn.execute(
+            sql,
+            (
+                date.strip(),
+                amount,
+                category.strip(),
+                item.strip(),
+                (memo or "").strip(),
+            ),
+        )
         conn.commit()
 
 
 def _month_range(year_month: str) -> Tuple[str, str]:
+    """
+    'YYYY-MM' -> [start, end)
+    """
     if len(year_month) != 7 or year_month[4] != "-":
         raise ValueError("year_month must be 'YYYY-MM'")
     y = int(year_month[:4])
@@ -69,7 +92,6 @@ def _month_range(year_month: str) -> Tuple[str, str]:
     return start, end
 
 
-# ★ここで日本語キーに変換
 def fetch_month(year_month: str) -> List[Dict[str, Any]]:
     start, end = _month_range(year_month)
     sql = """
@@ -81,16 +103,17 @@ def fetch_month(year_month: str) -> List[Dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(sql, (start, end)).fetchall()
 
+    # Return EN keys (stable)
     out: List[Dict[str, Any]] = []
     for r in rows:
         out.append(
             {
                 "id": int(r["id"]),
-                "日付": r["date"],
-                "金額": int(r["amount"]),
-                "カテゴリー": r["category"],
-                "品物": r["item"],
-                "メモ": r["memo"],
+                "date": r["date"],
+                "amount": int(r["amount"]),
+                "category": r["category"],
+                "item": r["item"],
+                "memo": r["memo"],
             }
         )
     return out
@@ -108,7 +131,6 @@ def sum_month(year_month: str) -> int:
     return int(row["total"]) if row is not None else 0
 
 
-# ★カテゴリ集計も日本語キー
 def sum_by_category(year_month: str) -> List[Dict[str, Any]]:
     start, end = _month_range(year_month)
     sql = """
@@ -121,7 +143,8 @@ def sum_by_category(year_month: str) -> List[Dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(sql, (start, end)).fetchall()
 
-    return [{"カテゴリー": r["category"], "合計": int(r["total"])} for r in rows]
+    # Return EN keys (stable)
+    return [{"category": r["category"], "total": int(r["total"])} for r in rows]
 
 
 def delete_transaction(tx_id: int) -> None:

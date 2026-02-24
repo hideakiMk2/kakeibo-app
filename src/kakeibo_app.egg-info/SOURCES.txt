@@ -1,8 +1,5 @@
 README.md
 pyproject.toml
-src/db/__init__.py
-src/db/connection.py
-src/db/repo.py
 src/kakeibo/__init__.py
 src/kakeibo/db/__init__.py
 src/kakeibo/db/connection.py
