@@ -15,12 +15,12 @@ docker run --rm -p 8501:8501 \
   kakeibo-app
 
 ブラウザ：\
-http://localhost:8501
-3) コンテナに入る（任意）
+http://localhost:8501　\
+3) コンテナに入る（任意）\
 docker run --rm -it \
   -v "$(pwd):/app" \
   kakeibo-app \
-  bash
+  bash　\
 4) （コンテナ内で）Streamlit起動\
 uv run -- streamlit run src/app/main.py \
   --server.address=0.0.0.0 \
