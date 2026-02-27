@@ -12,8 +12,8 @@ docker build -t kakeibo-app .
 ```
 2) アプリ起動 
 ```bash
-docker run --rm -p 8501:8501 
-  -v "$(pwd)/data:/app/data" 
+docker run --rm -p 8501:8501 \
+  -v "$(pwd)/data:/app/data" \
   kakeibo-app
 ```
 ブラウザ：http://localhost:8501

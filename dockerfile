@@ -4,16 +4,15 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
-# 依存定義と src を同時コピー（←重要）
-COPY pyproject.toml uv.lock src ./ 
+# 依存定義
+COPY pyproject.toml uv.lock ./
 
-# 依存 + プロジェクト同期
+# src を明示的に /app/src にコピー
+COPY src/ ./src/
+
+# ここで sync（プロジェクトの editable install が走る）
 RUN uv sync --frozen
 
-# 残りのファイル
-COPY . .
-
 EXPOSE 8501
-ENV PYTHONPATH=src
 
 CMD ["uv", "run", "--", "streamlit", "run", "src/app/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
