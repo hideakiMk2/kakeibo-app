@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Literal, Iterable
-from datetime import datetime
+from typing import Optional, Literal
 
-from db.connection import get_connection
+from kakeibo.db.connection import get_connection
 
 
 TxType = Literal["expense", "income"]

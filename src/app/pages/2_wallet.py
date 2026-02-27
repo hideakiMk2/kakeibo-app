@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date
 
-from db import repo
+from kakeibo.db import repo
 
 st.set_page_config(page_title="残高と収入", layout="wide")
 repo.init_db()

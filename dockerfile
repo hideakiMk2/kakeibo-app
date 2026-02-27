@@ -1,21 +1,19 @@
-FROM python:3.13-slim
+FROM python:3.13.11-slim
 
 WORKDIR /app
 
-# uv をインストール
 RUN pip install --no-cache-dir uv
 
-# 依存定義を先にコピー（キャッシュ効かせる）
-COPY pyproject.toml uv.lock ./
+# 依存定義と src を同時コピー（←重要）
+COPY pyproject.toml uv.lock src ./ 
 
-# 依存インストール（uvが .venv を作成）
+# 依存 + プロジェクト同期
 RUN uv sync --frozen
 
-# アプリ全体をコピー
+# 残りのファイル
 COPY . .
 
-# Streamlitのポート
 EXPOSE 8501
+ENV PYTHONPATH=src
 
-# コンテナ内でStreamlit起動（外部公開）
-CMD ["uv", "run", "--", "streamlit", "run", "app/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
+CMD ["uv", "run", "--", "streamlit", "run", "src/app/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
