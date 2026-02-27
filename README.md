@@ -1,6 +1,13 @@
 # 家計簿アプリ（Streamlit）
 Streamlit と SQLite を用いた勉強目的のシンプルな家計簿アプリです。  
 日々の支出・収入を記録し、月次集計やカテゴリ別の可視化を行えます。
+
+devへpush
+```bash
+git add .
+git commit -m "update"
+git push
+```
 ---
 # 起動方法
 起動方法（Docker）\
@@ -18,14 +25,15 @@ docker run --rm -p 8501:8501 \
 ```
 ブラウザ：http://localhost:8501
 
-3) コンテナに入る（任意）
+コンテナで起動する場合
+1) コンテナに入る
 ```bash
 docker run --rm -it 
   -v "$(pwd):/app" 
   kakeibo-app 
   bash
 ```
-4) （コンテナ内で）Streamlit起動
+2) （コンテナ内で）Streamlit起動
 ```bash
 uv run -- streamlit run src/app/main.py 
   --server.address=0.0.0.0
